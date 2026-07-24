@@ -274,17 +274,12 @@ def auto_preprocess_uploaded_data(data, expected_features, training_means=None):
     available_features = [f for f in expected_features if f in df.columns]
     missing_features = [f for f in expected_features if f not in df.columns]
     
-    if n_mapped < 20:
-        errors.append(f"Only {n_mapped} out of {n_expected} features could be mapped. "
-                     f"Need at least 20 features for reliable prediction. "
-                     f"Missing: {', '.join(missing_features[:5])}...")
-        return None, None, info, warns, errors
-    
     if n_mapped < n_expected:
-        info.append(f"Mapped {n_mapped}/{n_expected} features successfully")
-        warns.append(f"{len(missing_features)} features missing and will be imputed with training means: "
-                    f"{', '.join(missing_features[:5])}" +
-                    (f"... and {len(missing_features)-5} more" if len(missing_features) > 5 else ""))
+        errors.append(
+            f"Only {n_mapped} out of {n_expected} required features were found. "
+            "Please upload a CSV containing all 30 expected feature columns."
+        )
+        return None, None, info, warns, errors
     else:
         info.append(f"All {n_expected} features mapped successfully")
     
@@ -300,11 +295,9 @@ def auto_preprocess_uploaded_data(data, expected_features, training_means=None):
     for feature in expected_features:
         if feature in df.columns:
             result_df[feature] = pd.to_numeric(df[feature], errors='coerce')
-        elif training_means is not None and feature in training_means:
-            # Impute with training mean
-            result_df[feature] = training_means[feature]
         else:
-            result_df[feature] = 0.0  # fallback
+            # This should not happen in strict mode, but handle gracefully
+            result_df[feature] = 0.0
     
     # --- Step 5: Final validation ---
     # Check for nulls after numeric conversion
@@ -332,7 +325,10 @@ def auto_preprocess_uploaded_data(data, expected_features, training_means=None):
     # Check target validity
     if target is not None:
         if target.nunique() < 2:
-            warns.append(f"Only one class present in target. Metrics like AUC may not be computable.")
+            errors.append(
+                "Only one target class is present. Both classes 0 and 1 are required "
+                "to calculate AUC, ROC curve and complete evaluation metrics."
+            )
         if len(target) < 5:
             errors.append(f"Too few samples ({len(target)}). Need at least 5 rows.")
     
@@ -342,14 +338,16 @@ def auto_preprocess_uploaded_data(data, expected_features, training_means=None):
     return result_df, target, info, warns, errors
 
 
-@st.cache_data
+@st.cache_resource
 def get_training_means():
-    """Get training data means for imputing missing features."""
-    test_data_path = os.path.join(os.path.dirname(__file__), 'test_data.csv')
-    if os.path.exists(test_data_path):
-        test_df = pd.read_csv(test_data_path)
-        feature_cols = [c for c in test_df.columns if c != 'target']
-        return test_df[feature_cols].mean().to_dict()
+    """Load training-set means for imputation of missing features."""
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "model",
+        "training_means.pkl"
+    )
+    if os.path.exists(path):
+        return joblib.load(path)
     return None
 
 

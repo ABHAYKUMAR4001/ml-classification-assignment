@@ -183,6 +183,12 @@ def main():
     feature_names_path = os.path.join(os.path.dirname(__file__), 'feature_names.pkl')
     joblib.dump(list(X.columns), feature_names_path)
 
+    # Save training means for imputation in Streamlit app
+    training_means = X_train.mean().to_dict()
+    training_means_path = os.path.join(os.path.dirname(__file__), 'training_means.pkl')
+    joblib.dump(training_means, training_means_path)
+    print(f"[4] Training means saved to: training_means.pkl")
+
     # Build model pipelines (model-specific preprocessing)
     print(f"\n[4] Building model pipelines with model-specific preprocessing...")
     print(f"    - StandardScaler applied to: Logistic Regression, KNN, SVM")

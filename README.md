@@ -158,7 +158,7 @@ Each model has inherent limitations that should be acknowledged:
 ## e. Streamlit App Features
 
 The deployed Streamlit app includes:
-1. **CSV Upload Option** - Upload custom test data with comprehensive validation
+1. **CSV Upload Option** - Upload custom test data with comprehensive validation. Uploaded CSV files must contain all 30 required diagnostic features. The application automatically supports common sklearn and Kaggle column-name formats.
 2. **Model Selection Dropdown** - Choose from 6 trained ML models
 3. **Evaluation Metrics Display** - Shows Accuracy, AUC, Precision (weighted), Recall (weighted), F1 (weighted), MCC
 4. **Confusion Matrix & Classification Report** - Visual heatmap and detailed tabular report
