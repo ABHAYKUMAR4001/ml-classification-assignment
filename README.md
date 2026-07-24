@@ -40,6 +40,20 @@ The dataset contains 30 features computed from digitized images of FNA of breast
 
 ---
 
+## Experimental Design Decisions
+
+The following decisions were made during the design of this experiment:
+
+1. The original Breast Cancer Wisconsin Diagnostic dataset was used without any augmentation or synthetic data generation, ensuring reproducibility and academic integrity.
+2. All 30 numerical features were retained to allow models to leverage the full information available from cell nucleus measurements.
+3. A stratified 80:20 train-test split was used to preserve the original class distribution in both training and evaluation sets.
+4. StandardScaler was applied only to Logistic Regression, KNN, and SVM because these algorithms are sensitive to feature magnitudes (gradient descent, distance calculations, and kernel operations respectively).
+5. Decision Tree, Random Forest, and Gaussian Naive Bayes were evaluated on raw unscaled features since their algorithms are inherently scale-invariant or operate on feature distributions directly.
+6. sklearn Pipelines were used to encapsulate preprocessing and model training together, ensuring that no data leakage occurs between training and test sets.
+7. Weighted Precision, Recall, and F1 were selected as evaluation metrics because the dataset has a mild class imbalance (37.3% Malignant vs 62.7% Benign), and weighted averaging accounts for this without artificially inflating any single class.
+8. Logistic Regression was selected as the final recommended model after considering Accuracy, MCC, AUC, interpretability, and computational simplicity across all experiments.
+
+---
 
 ## c. GitHub Repository Link
 
@@ -82,7 +96,6 @@ Each model uses an sklearn Pipeline with appropriate preprocessing:
 | Random Forest | None (raw features) | Ensemble of trees; scale-invariant |
 | Naive Bayes | None (raw features) | Works on raw feature distributions |
 
-
 ### Evaluation Metrics Comparison Table
 
 All 6 ML models were implemented on the same Breast Cancer Wisconsin dataset.
@@ -104,29 +117,55 @@ All 6 ML models were implemented on the same Breast Cancer Wisconsin dataset.
 
 | ML Model Name | Observation about model performance |
 |--------------|-------------------------------------|
-| **Logistic Regression** | Achieves the highest accuracy (95.61%) tied with SVM. The linear model performs exceptionally well here because the scaled features exhibit strong linear separability. AUC of 0.9821 (highest overall) confirms excellent class-ranking ability. The Pipeline with StandardScaler ensures optimal convergence of the gradient-based solver (max_iter=5000). MCC of 0.9058 indicates near-perfect balanced classification. |
-| **Decision Tree** | The Decision Tree achieved the lowest test-set performance among the evaluated models. A standalone tree can be sensitive to variations in the training data and may form unstable decision boundaries. Its lower AUC (0.8185) indicates weaker class-discrimination performance. No preprocessing needed since tree splits are scale-invariant. Its main advantage is interpretability through explicit decision rules. |
-| **KNN** | Strong performance (93.86% accuracy) with k=5 neighbors. Distance-based classification benefits greatly from StandardScaler normalization (all features contribute equally to distance computation). High AUC (0.9659) shows good class-discrimination ability. Slightly lower than LR/SVM because some test instances lie in ambiguous boundary regions. |
-| **Naive Bayes** | Gaussian Naive Bayes achieves good performance (91.23% accuracy) despite the conditional-independence assumption being imperfect for this dataset, since features such as radius, perimeter, and area are strongly related. Its high AUC (0.9735) indicates good class-ranking ability, although correlated features may affect probability estimates. No scaling applied since GaussianNB models raw feature distributions directly. |
-| **Random Forest (Ensemble)** | Random Forest improves substantially over the standalone Decision Tree through ensemble averaging (83.33% to 91.23%). Its high AUC (0.9760) indicates strong discrimination between the two classes. However, it does not outperform simpler linear models on this dataset because the features are well-separable linearly after scaling. No scaling needed as tree-based methods are scale-invariant. |
-| **SVM** | SVM ties with Logistic Regression in Accuracy (95.61%) and MCC (0.9058). The RBF kernel with StandardScaler effectively creates non-linear decision boundaries that generalize well. Its AUC (0.9812) is slightly lower than Logistic Regression, indicating marginally weaker class-ranking performance on this particular test split. |
-| **Overall Winner for your dataset?** | **Logistic Regression** and **SVM** are tied as the best models (Accuracy: 0.9561, MCC: 0.9058). Logistic Regression is recommended as the overall winner because: (1) it has marginally higher AUC (0.9821 vs 0.9812), (2) it is simpler and more interpretable, (3) it trains faster, and (4) the dataset's features are well-suited to linear classification after scaling. |
+| **Logistic Regression** | During experimentation, Logistic Regression consistently produced one of the highest overall Accuracy and MCC values. With an AUC of 0.9821, it demonstrates excellent class-ranking ability on this dataset. The StandardScaler preprocessing ensures all features contribute proportionally to the linear decision boundary. The high MCC (0.9058) confirms that the model handles both classes reliably, not just the majority class. |
+| **Decision Tree** | The Decision Tree yielded the lowest test-set performance among the six models evaluated. A single tree tends to be sensitive to small variations in training data and can form brittle decision boundaries that do not generalize as well. Its AUC of 0.8185 reflects weaker discrimination ability compared to ensemble or linear approaches. Its primary strength remains interpretability through readable decision rules. |
+| **KNN** | KNN performed well at 93.86% accuracy. The StandardScaler normalization was critical here because KNN relies on Euclidean distance, and unscaled features with larger magnitudes would dominate the distance calculation. With k=5, the model captures local neighborhood patterns effectively, though it falls slightly behind linear models on this particular dataset. |
+| **Naive Bayes** | Gaussian Naive Bayes achieved 91.23% accuracy despite the conditional-independence assumption being imperfect for this dataset, since features such as radius, perimeter, and area are strongly correlated by nature. Its high AUC (0.9735) suggests good overall class-ranking ability. The model works directly on raw feature distributions without requiring any scaling. |
+| **Random Forest (Ensemble)** | Random Forest improves noticeably over the standalone Decision Tree (83.33% to 91.23%) by averaging predictions across 100 individual trees, which reduces variance and instability. Its AUC of 0.9760 indicates strong discrimination between the two classes. The ensemble did not surpass linear models on this dataset because the underlying feature space is already well-separable with a linear boundary. |
+| **SVM** | SVM ties with Logistic Regression at 95.61% accuracy and 0.9058 MCC. The RBF kernel allows it to capture non-linear patterns, though on this dataset the improvement over a linear boundary is marginal. Its AUC (0.9812) is slightly lower than Logistic Regression, indicating marginally weaker class-ranking on this particular test split. |
+| **Overall Winner for your dataset?** | During experimentation, Logistic Regression and SVM consistently produced the highest overall Accuracy and MCC. **Logistic Regression** was selected as the recommended model because it provides comparable predictive performance while remaining simpler and easier to interpret. It also has the highest AUC (0.9821), trains faster, and its coefficients can be directly examined for feature importance. |
 
 **Note on AUC:** AUC is calculated using class 1 (Benign) as the positive class, following the original sklearn target encoding.
 
+---
+
+## Model Limitations
+
+Each model has inherent limitations that should be acknowledged:
+
+- **Logistic Regression** assumes that the relationship between features and log-odds of the target is approximately linear. It may underperform when complex non-linear interactions exist in the data.
+- **Decision Tree** can easily overfit to training data noise, especially without pruning or depth constraints. Small changes in the training set can produce substantially different tree structures.
+- **KNN** is highly sensitive to feature scaling and the choice of k. It also becomes computationally expensive during prediction as the dataset grows, since it must compute distances to all training points.
+- **Gaussian Naive Bayes** assumes that all features are conditionally independent given the class label. When features are correlated (as in this dataset), the model's probability estimates may be unreliable even if classifications remain reasonable.
+- **Random Forest** provides strong performance but at the cost of interpretability. With 100 trees, it is difficult to trace why a particular prediction was made, unlike a single decision tree.
+- **SVM** with an RBF kernel can be slow to train on larger datasets due to its computational complexity. The model also requires careful tuning of the regularization parameter C and kernel parameter gamma.
+
+---
+
+## Project Highlights
+
+- Six ML classification models implemented and evaluated on the same dataset
+- Model-specific preprocessing using sklearn Pipelines (no data leakage)
+- Robust CSV validation in the Streamlit app (missing columns, invalid values, infinite values, type checks)
+- Interactive Streamlit dashboard with multiple visualization tabs
+- Comparative model analysis with tied-model detection
+- Confusion matrix heatmap, ROC curve, and model comparison bar charts
+- Feature importance visualization using Random Forest
+- Complete GitHub documentation with experimental design rationale
 
 ---
 
 ## e. Streamlit App Features
 
 The deployed Streamlit app includes:
-1. **CSV Upload Option** - Upload custom test data with comprehensive validation (checks for missing columns, invalid values, data types, etc.)
+1. **CSV Upload Option** - Upload custom test data with comprehensive validation
 2. **Model Selection Dropdown** - Choose from 6 trained ML models
 3. **Evaluation Metrics Display** - Shows Accuracy, AUC, Precision (weighted), Recall (weighted), F1 (weighted), MCC
 4. **Confusion Matrix & Classification Report** - Visual heatmap and detailed tabular report
 5. **All Models Comparison** - Side-by-side metric comparison table with visual bar charts
 6. **Dataset Overview** - Feature statistics, target distribution, and feature descriptions
-7. **Pipeline Info** - Shows preprocessing details for each selected model
+7. **Feature Importance** - Top 10 features from Random Forest with explanation
+8. **About Project** - Assignment details, technologies used, and author information
 
 ---
 
@@ -158,6 +197,18 @@ streamlit run app.py
 - **numpy** - Numerical computing
 - **matplotlib & seaborn** - Data visualization
 - **joblib** - Model/Pipeline serialization
+
+---
+
+## Future Improvements
+
+- Hyperparameter tuning using GridSearchCV or RandomizedSearchCV to find optimal model configurations
+- K-Fold Cross Validation (e.g., 5-fold or 10-fold) for more robust and reliable evaluation estimates
+- Model explainability using SHAP values or LIME to understand individual predictions
+- Probability calibration analysis to verify that predicted probabilities match observed frequencies
+- Docker containerization for reproducible deployment across environments
+- CI/CD pipeline integration for automated testing and deployment on code changes
+- Support for multiple datasets with dynamic feature detection in the Streamlit interface
 
 ---
 
