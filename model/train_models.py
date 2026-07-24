@@ -1,7 +1,7 @@
 """
 ML Classification Models Training Script
 Author: Abhay Kumar (2025AC05310)
-Programme: M.Tech (AIML/DSE) - BITS Pilani (WILP)
+Programme: M.Tech (AI & ML) - BITS Pilani (WILP)
 Assignment: Machine Learning - Classification Assignment 2
 
 Dataset: Breast Cancer Wisconsin (Diagnostic) - UCI ML Repository / sklearn
