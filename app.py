@@ -2,6 +2,9 @@
 Breast Cancer Wisconsin Classification - Streamlit Web Application
 Author: Abhay Kumar
 Description: Interactive ML classification app demonstrating 6 models with evaluation metrics.
+BITS ID: 2025AC05310
+Programme: M.Tech (AIML/DSE) - BITS Pilani (WILP)
+Assignment: Machine Learning - Classification Assignment 2
 Dataset: Breast Cancer Wisconsin (Diagnostic) - UCI ML Repository
 Models use sklearn Pipelines with model-specific preprocessing.
 """
@@ -277,6 +280,7 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Author")
     st.sidebar.markdown("**Abhay Kumar**")
+    st.sidebar.markdown("BITS ID: 2025AC05310")
     st.sidebar.markdown("BITS Pilani WILP")
     st.sidebar.markdown("Machine Learning")
     st.sidebar.markdown("Classification Assignment 2")
@@ -565,6 +569,7 @@ def main():
             | **Programme** | M.Tech AIML/DSE |
             | **University** | BITS Pilani (WILP) |
             | **Author** | Abhay Kumar |
+            | **BITS ID** | 2025AC05310 |
             """)
 
         with col2:
@@ -601,7 +606,7 @@ def main():
     st.markdown("---")
     st.markdown(
         "<div style='text-align: center; color: #888; padding: 10px;'>"
-        "Developed by <b>Abhay Kumar</b> | Machine Learning Assignment 2 | BITS Pilani WILP"
+        "Developed by <b>Abhay Kumar</b> (2025AC05310) | Machine Learning Assignment 2 | BITS Pilani WILP"
         "</div>",
         unsafe_allow_html=True
     )

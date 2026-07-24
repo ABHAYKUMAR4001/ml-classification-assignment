@@ -1,5 +1,9 @@
 """
 ML Classification Models Training Script
+Author: Abhay Kumar (2025AC05310)
+Programme: M.Tech (AIML/DSE) - BITS Pilani (WILP)
+Assignment: Machine Learning - Classification Assignment 2
+
 Dataset: Breast Cancer Wisconsin (Diagnostic) - UCI ML Repository / sklearn
 Models: Logistic Regression, Decision Tree, KNN, Naive Bayes, Random Forest, SVM
 
