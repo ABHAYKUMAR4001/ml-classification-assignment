@@ -85,72 +85,272 @@ def load_feature_names():
     return None
 
 
-def validate_uploaded_data(data, expected_features):
+def build_column_mapping():
     """
-    Validate the uploaded CSV data comprehensively.
-    Returns (is_valid, error_messages, warnings).
+    Build a comprehensive mapping from various CSV column name formats
+    to the sklearn feature names used during training.
+    Handles: Kaggle format, sklearn format, mixed case, underscores, etc.
+    """
+    from sklearn.datasets import load_breast_cancer
+    sklearn_names = list(load_breast_cancer().feature_names)
+
+    # Kaggle-style column names (property_statistic format)
+    kaggle_names = [
+        'radius_mean', 'texture_mean', 'perimeter_mean', 'area_mean', 'smoothness_mean',
+        'compactness_mean', 'concavity_mean', 'concave points_mean', 'symmetry_mean', 'fractal_dimension_mean',
+        'radius_se', 'texture_se', 'perimeter_se', 'area_se', 'smoothness_se',
+        'compactness_se', 'concavity_se', 'concave points_se', 'symmetry_se', 'fractal_dimension_se',
+        'radius_worst', 'texture_worst', 'perimeter_worst', 'area_worst', 'smoothness_worst',
+        'compactness_worst', 'concavity_worst', 'concave points_worst', 'symmetry_worst', 'fractal_dimension_worst'
+    ]
+
+    # Build mapping: any known variant -> sklearn name
+    mapping = {}
+    for sk_name, kg_name in zip(sklearn_names, kaggle_names):
+        # Direct matches
+        mapping[sk_name] = sk_name
+        mapping[kg_name] = sk_name
+
+        # Normalized variants (lowercase, no extra spaces)
+        mapping[sk_name.lower().strip()] = sk_name
+        mapping[kg_name.lower().strip()] = sk_name
+
+        # Underscore variants of sklearn names (e.g., "mean_radius")
+        mapping[sk_name.replace(' ', '_')] = sk_name
+        mapping[sk_name.replace(' ', '_').lower()] = sk_name
+
+        # Space variants of kaggle names (e.g., "radius mean")
+        mapping[kg_name.replace('_', ' ')] = sk_name
+        mapping[kg_name.replace('_', ' ').lower()] = sk_name
+
+    # Additional common variants
+    # "se" <-> "error" mapping
+    for sk_name, kg_name in zip(sklearn_names, kaggle_names):
+        if 'error' in sk_name:
+            # "radius error" -> also match "radius_se", "radius se"
+            base = sk_name.replace(' error', '')
+            mapping[f"{base}_se"] = sk_name
+            mapping[f"{base} se"] = sk_name
+            mapping[f"{base}_std_error"] = sk_name
+            mapping[f"{base}_stderr"] = sk_name
+
+    return mapping
+
+
+def normalize_column_name(col_name):
+    """Normalize a column name for matching purposes."""
+    return col_name.lower().strip().replace('  ', ' ')
+
+
+def auto_preprocess_uploaded_data(data, expected_features, training_means=None):
+    """
+    Automatically detect CSV format and preprocess uploaded data.
+    
+    Handles:
+    - Kaggle format (id, diagnosis, radius_mean, ...)
+    - sklearn format (mean radius, ..., target)
+    - Mixed/partial formats
+    - Target encoding (M/B -> 0/1)
+    - Column name normalization
+    - Partial feature imputation (with warning)
+    
+    Returns: (processed_df, target_series, info_messages, warning_messages, error_messages)
     """
     errors = []
     warns = []
-
-    # Check if 'target' column exists
-    if 'target' not in data.columns:
-        errors.append("Missing required column: 'target'")
-
-    # Check for expected feature columns
-    feature_cols = [col for col in data.columns if col != 'target']
-    missing_cols = [col for col in expected_features if col not in data.columns]
-    extra_cols = [col for col in feature_cols if col not in expected_features]
-
-    if missing_cols:
-        errors.append(f"Missing feature columns ({len(missing_cols)}): {', '.join(missing_cols[:5])}" +
-                     (f"... and {len(missing_cols)-5} more" if len(missing_cols) > 5 else ""))
-
-    if extra_cols:
-        warns.append(f"Extra columns detected ({len(extra_cols)}): {', '.join(extra_cols[:5])}" +
-                    (f"... and {len(extra_cols)-5} more" if len(extra_cols) > 5 else "") +
-                    ". These will be ignored.")
-
-    # Check for missing values (only on columns that actually exist)
-    available_features = [col for col in expected_features if col in data.columns]
-    if available_features:
-        null_counts = data[available_features].isnull().sum()
-        cols_with_nulls = null_counts[null_counts > 0]
-        if len(cols_with_nulls) > 0:
-            total_nulls = int(cols_with_nulls.sum())
-            errors.append(
-                f"Missing values detected: {total_nulls} null values "
-                f"across {len(cols_with_nulls)} columns. "
-                f"Columns: {', '.join(cols_with_nulls.index[:3].tolist())}"
-            )
-
-    # Check for infinite values
-    if available_features and np.isinf(data[available_features].to_numpy()).any():
-        errors.append("Infinite values detected in feature columns.")
-
-    # Check for invalid target values
-    if 'target' in data.columns:
-        unique_targets = data['target'].unique()
-        invalid_targets = [t for t in unique_targets if t not in [0, 1]]
-        if len(invalid_targets) > 0:
-            errors.append(f"Invalid target values found: {invalid_targets}. Expected only 0 (Malignant) and 1 (Benign).")
-
-        if data['target'].nunique() < 2:
-            errors.append(f"Only one class found in target column (value: {unique_targets[0]}). "
-                         "Need both classes (0 and 1) for meaningful evaluation.")
-
-    # Check for non-numeric features
-    for col in available_features:
-        if not pd.api.types.is_numeric_dtype(data[col]):
-            errors.append(f"Column '{col}' contains non-numeric data. All features must be numeric.")
+    info = []
+    
+    df = data.copy()
+    
+    # --- Step 1: Drop junk columns ---
+    junk_patterns = ['unnamed', 'index']
+    cols_to_drop = []
+    for col in df.columns:
+        col_lower = col.lower().strip()
+        if any(pat in col_lower for pat in junk_patterns):
+            cols_to_drop.append(col)
+    if 'id' in [c.lower().strip() for c in df.columns]:
+        id_col = [c for c in df.columns if c.lower().strip() == 'id'][0]
+        cols_to_drop.append(id_col)
+    
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop, errors='ignore')
+        info.append(f"Dropped non-feature columns: {', '.join(cols_to_drop)}")
+    
+    # --- Step 2: Detect and encode target ---
+    target = None
+    target_col_name = None
+    
+    # Check for 'target' column
+    for col in df.columns:
+        if col.lower().strip() == 'target':
+            target_col_name = col
             break
+    
+    # Check for 'diagnosis' column (Kaggle format)
+    if target_col_name is None:
+        for col in df.columns:
+            if col.lower().strip() == 'diagnosis':
+                target_col_name = col
+                break
+    
+    # Check for 'class' or 'label' column
+    if target_col_name is None:
+        for col in df.columns:
+            if col.lower().strip() in ['class', 'label', 'output', 'y']:
+                target_col_name = col
+                break
+    
+    if target_col_name is not None:
+        target_series = df[target_col_name].copy()
+        df = df.drop(columns=[target_col_name])
+        
+        # Encode target if needed
+        unique_vals = target_series.unique()
+        
+        if set(unique_vals) <= {0, 1, 0.0, 1.0}:
+            # Already numeric 0/1
+            target = target_series.astype(int)
+            info.append(f"Target column '{target_col_name}' detected (numeric 0/1)")
+        elif set([str(v).upper() for v in unique_vals]) <= {'M', 'B'}:
+            # Kaggle M/B format -> M=0 (Malignant), B=1 (Benign)
+            target = target_series.map(lambda x: 0 if str(x).upper() == 'M' else 1).astype(int)
+            info.append(f"Target column '{target_col_name}' auto-encoded: M=0 (Malignant), B=1 (Benign)")
+        elif set([str(v).upper() for v in unique_vals]) <= {'MALIGNANT', 'BENIGN'}:
+            target = target_series.map(lambda x: 0 if 'malig' in str(x).lower() else 1).astype(int)
+            info.append(f"Target column '{target_col_name}' auto-encoded: Malignant=0, Benign=1")
+        else:
+            # Try numeric conversion
+            try:
+                target = pd.to_numeric(target_series, errors='coerce').astype(int)
+                if target.nunique() == 2:
+                    info.append(f"Target column '{target_col_name}' used as-is (2 classes)")
+                else:
+                    errors.append(f"Target column '{target_col_name}' has {target.nunique()} unique values. Expected binary (2 classes).")
+                    target = None
+            except Exception:
+                errors.append(f"Could not interpret target column '{target_col_name}' values: {list(unique_vals[:5])}")
+                target = None
+    else:
+        errors.append("No target column found. Looked for: 'target', 'diagnosis', 'class', 'label'.")
+    
+    # --- Step 3: Map column names to expected feature names ---
+    col_mapping = build_column_mapping()
+    
+    mapped_columns = {}  # original_col -> sklearn_name
+    unmapped_columns = []
+    
+    for col in df.columns:
+        normalized = normalize_column_name(col)
+        if normalized in col_mapping:
+            mapped_columns[col] = col_mapping[normalized]
+        elif col in col_mapping:
+            mapped_columns[col] = col_mapping[col]
+        else:
+            # Try additional fuzzy matching
+            matched = False
+            for key, value in col_mapping.items():
+                if normalize_column_name(key) == normalized:
+                    mapped_columns[col] = value
+                    matched = True
+                    break
+            if not matched:
+                unmapped_columns.append(col)
+    
+    # Report mapping results
+    mapped_features = set(mapped_columns.values())
+    n_mapped = len(mapped_features)
+    n_expected = len(expected_features)
+    
+    if n_mapped == 0:
+        errors.append(f"Could not map any uploaded columns to expected features. "
+                     f"Expected columns like: {', '.join(expected_features[:5])}...")
+        return None, None, info, warns, errors
+    
+    # Rename columns to sklearn format
+    df = df.rename(columns=mapped_columns)
+    
+    # Keep only mapped feature columns
+    available_features = [f for f in expected_features if f in df.columns]
+    missing_features = [f for f in expected_features if f not in df.columns]
+    
+    if n_mapped < 20:
+        errors.append(f"Only {n_mapped} out of {n_expected} features could be mapped. "
+                     f"Need at least 20 features for reliable prediction. "
+                     f"Missing: {', '.join(missing_features[:5])}...")
+        return None, None, info, warns, errors
+    
+    if n_mapped < n_expected:
+        info.append(f"Mapped {n_mapped}/{n_expected} features successfully")
+        warns.append(f"{len(missing_features)} features missing and will be imputed with training means: "
+                    f"{', '.join(missing_features[:5])}" +
+                    (f"... and {len(missing_features)-5} more" if len(missing_features) > 5 else ""))
+    else:
+        info.append(f"All {n_expected} features mapped successfully")
+    
+    if unmapped_columns:
+        extra_list = ', '.join(unmapped_columns[:5])
+        if len(unmapped_columns) > 5:
+            extra_list += f"... and {len(unmapped_columns)-5} more"
+        info.append(f"Ignored extra columns: {extra_list}")
+    
+    # --- Step 4: Build final feature DataFrame ---
+    result_df = pd.DataFrame(index=df.index)
+    
+    for feature in expected_features:
+        if feature in df.columns:
+            result_df[feature] = pd.to_numeric(df[feature], errors='coerce')
+        elif training_means is not None and feature in training_means:
+            # Impute with training mean
+            result_df[feature] = training_means[feature]
+        else:
+            result_df[feature] = 0.0  # fallback
+    
+    # --- Step 5: Final validation ---
+    # Check for nulls after numeric conversion
+    null_count = result_df.isnull().sum().sum()
+    if null_count > 0:
+        null_cols = result_df.columns[result_df.isnull().any()].tolist()
+        warns.append(f"Some values could not be converted to numeric ({null_count} nulls). "
+                    f"Columns: {', '.join(null_cols[:3])}. These will be filled with training means.")
+        if training_means is not None:
+            for col in null_cols:
+                if col in training_means:
+                    result_df[col] = result_df[col].fillna(training_means[col])
+        result_df = result_df.fillna(0.0)
+    
+    # Check for infinite values
+    if np.isinf(result_df.to_numpy()).any():
+        warns.append("Infinite values detected and replaced with column means.")
+        result_df = result_df.replace([np.inf, -np.inf], np.nan)
+        if training_means is not None:
+            for col in result_df.columns[result_df.isnull().any()]:
+                if col in training_means:
+                    result_df[col] = result_df[col].fillna(training_means[col])
+        result_df = result_df.fillna(0.0)
+    
+    # Check target validity
+    if target is not None:
+        if target.nunique() < 2:
+            warns.append(f"Only one class present in target. Metrics like AUC may not be computable.")
+        if len(target) < 5:
+            errors.append(f"Too few samples ({len(target)}). Need at least 5 rows.")
+    
+    if len(errors) > 0:
+        return None, None, info, warns, errors
+    
+    return result_df, target, info, warns, errors
 
-    # Check minimum row count
-    if len(data) < 5:
-        errors.append(f"Too few samples ({len(data)}). Need at least 5 rows for evaluation.")
 
-    is_valid = len(errors) == 0
-    return is_valid, errors, warns
+@st.cache_data
+def get_training_means():
+    """Get training data means for imputing missing features."""
+    test_data_path = os.path.join(os.path.dirname(__file__), 'test_data.csv')
+    if os.path.exists(test_data_path):
+        test_df = pd.read_csv(test_data_path)
+        feature_cols = [c for c in test_df.columns if c != 'target']
+        return test_df[feature_cols].mean().to_dict()
+    return None
 
 
 def calculate_metrics(y_true, y_pred, y_prob):
@@ -318,33 +518,42 @@ def main():
 
         st.success(f"Uploaded: {uploaded_file.name} ({data.shape[0]} rows, {data.shape[1]} columns)")
 
-        # Validate uploaded data
-        is_valid, errors, warns = validate_uploaded_data(data, feature_names)
+        # Smart auto-preprocessing (handles Kaggle, sklearn, partial formats)
+        training_means = get_training_means()
+        X, y, info_msgs, warn_msgs, error_msgs = auto_preprocess_uploaded_data(
+            data, feature_names, training_means
+        )
 
-        if warns:
-            for w in warns:
-                st.warning(f"Warning: {w}")
+        # Display info messages
+        for msg in info_msgs:
+            st.info(f"ℹ️ {msg}")
 
-        if not is_valid:
-            st.error("Data validation failed:")
-            for err in errors:
-                st.error(f"  - {err}")
-            st.info(f"Expected features ({len(feature_names)}): {', '.join(feature_names[:5])}... "
-                   f"[Upload test_data.csv from the repository for reference]")
+        # Display warnings
+        for msg in warn_msgs:
+            st.warning(f"⚠️ {msg}")
+
+        # Display errors and stop if any
+        if error_msgs:
+            st.error("Data processing failed:")
+            for err in error_msgs:
+                st.error(f"  ❌ {err}")
             return
+
+        if X is None or y is None:
+            st.error("Could not process the uploaded data.")
+            return
+
     else:
         # Use default test data
         test_data_path = os.path.join(os.path.dirname(__file__), 'test_data.csv')
         if os.path.exists(test_data_path):
             data = pd.read_csv(test_data_path)
             st.info("Using default test data (test_data.csv). Upload your own CSV from the sidebar.")
+            X = data[feature_names]
+            y = data['target']
         else:
             st.error("No test data found! Please upload a CSV file.")
             return
-
-    # Split features and target
-    X = data[feature_names]  # Use only expected features in correct order
-    y = data['target']
 
     # ==================== MODEL EVALUATION ====================
 
