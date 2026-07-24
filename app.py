@@ -275,15 +275,20 @@ def main():
     )
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### About")
+    st.sidebar.markdown("### Author")
+    st.sidebar.markdown("**Abhay Kumar**")
+    st.sidebar.markdown("BITS Pilani WILP")
+    st.sidebar.markdown("Machine Learning")
+    st.sidebar.markdown("Classification Assignment 2")
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Dataset")
     st.sidebar.info(
-        "**Dataset:** Breast Cancer Wisconsin (Diagnostic)\n\n"
+        "**Breast Cancer Wisconsin (Diagnostic)**\n\n"
         "**Source:** UCI ML Repository / sklearn\n\n"
-        "**Features:** 30 diagnostic measurements\n\n"
-        "**Instances:** 569 (original, no augmentation)\n\n"
-        "**Task:** Binary Classification\n\n"
+        "**Features:** 30 measurements\n\n"
+        "**Instances:** 569 (no augmentation)\n\n"
         "**Classes:** Malignant (0) / Benign (1)\n\n"
-        "**Metrics:** Weighted average for Precision, Recall, F1"
+        "**Metrics:** Weighted average"
     )
 
     # ==================== DATA LOADING & VALIDATION ====================
@@ -352,9 +357,10 @@ def main():
     # ==================== DISPLAY RESULTS ====================
 
     # Tab layout
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "Model Metrics", "Confusion Matrix & Report",
-        "All Models Comparison", "Dataset Overview"
+        "All Models Comparison", "Feature Importance",
+        "Dataset Overview", "About Project"
     ])
 
     with tab1:
@@ -459,6 +465,39 @@ def main():
         plt.close()
 
     with tab4:
+        st.subheader("Feature Importance (Random Forest)")
+        st.markdown("---")
+        st.markdown("The chart below shows the **top 10 most important features** as determined by the Random Forest model. "
+                   "Feature importance is measured by the average decrease in impurity (Gini importance) across all trees in the ensemble.")
+
+        # Get feature importances from Random Forest pipeline
+        if 'Random Forest' in pipelines:
+            rf_pipeline = pipelines['Random Forest']
+            rf_model = rf_pipeline.named_steps['classifier']
+            importances = rf_model.feature_importances_
+            feat_imp_df = pd.DataFrame({
+                'Feature': feature_names,
+                'Importance': importances
+            }).sort_values('Importance', ascending=False).head(10)
+
+            fig, ax = plt.subplots(figsize=(10, 6))
+            bars = ax.barh(feat_imp_df['Feature'][::-1], feat_imp_df['Importance'][::-1],
+                          color='#2ca02c', edgecolor='black', linewidth=0.5, alpha=0.85)
+            ax.set_xlabel('Importance (Gini)', fontsize=12)
+            ax.set_title('Top 10 Feature Importances - Random Forest', fontsize=14, fontweight='bold')
+            ax.grid(axis='x', alpha=0.3)
+            plt.tight_layout()
+            st.pyplot(fig)
+            plt.close()
+
+            st.markdown("**Interpretation:** Features with higher importance contribute more to the model's ability to "
+                       "distinguish between malignant and benign tumors. The worst perimeter, worst concave points, and "
+                       "mean concave points tend to be the most discriminative features in this dataset, reflecting "
+                       "the physical characteristics that differentiate cancerous cells.")
+        else:
+            st.warning("Random Forest model not available for feature importance visualization.")
+
+    with tab5:
         st.subheader("Dataset Overview")
         st.markdown("---")
 
@@ -510,6 +549,62 @@ def main():
         compactness, concavity, concave points, symmetry, fractal dimension), three statistics
         are computed: **mean**, **standard error (SE)**, and **worst** (largest value).
         """)
+
+    with tab6:
+        st.subheader("About This Project")
+        st.markdown("---")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("#### Project Details")
+            st.markdown("""
+            | Property | Value |
+            |----------|-------|
+            | **Assignment** | ML Classification Assignment 2 |
+            | **Course** | Machine Learning |
+            | **Programme** | M.Tech AIML/DSE |
+            | **University** | BITS Pilani (WILP) |
+            | **Author** | Abhay Kumar |
+            """)
+
+        with col2:
+            st.markdown("#### Technical Details")
+            import sklearn
+            st.markdown(f"""
+            | Property | Value |
+            |----------|-------|
+            | **Python Version** | 3.11 |
+            | **scikit-learn** | {sklearn.__version__} |
+            | **Streamlit** | {st.__version__} |
+            | **Dataset** | Breast Cancer Wisconsin |
+            | **Total Samples** | 569 |
+            | **Total Features** | 30 |
+            | **Models Implemented** | 6 |
+            """)
+
+        st.markdown("---")
+        st.markdown("#### Models Implemented")
+        st.markdown("""
+        1. Logistic Regression (with StandardScaler)
+        2. Decision Tree Classifier (raw features)
+        3. K-Nearest Neighbors (with StandardScaler)
+        4. Gaussian Naive Bayes (raw features)
+        5. Random Forest Classifier (raw features)
+        6. Support Vector Machine (with StandardScaler)
+        """)
+
+        st.markdown("---")
+        st.markdown("#### Technologies Used")
+        st.markdown("Python | Streamlit | scikit-learn | pandas | numpy | matplotlib | seaborn | joblib")
+
+    # Footer
+    st.markdown("---")
+    st.markdown(
+        "<div style='text-align: center; color: #888; padding: 10px;'>"
+        "Developed by <b>Abhay Kumar</b> | Machine Learning Assignment 2 | BITS Pilani WILP"
+        "</div>",
+        unsafe_allow_html=True
+    )
 
 
 if __name__ == "__main__":
