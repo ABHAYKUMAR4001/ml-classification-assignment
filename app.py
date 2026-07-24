@@ -716,7 +716,7 @@ def main():
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Test Samples Loaded", data.shape[0])
+            st.metric("Test Samples Loaded", X.shape[0])
         with col2:
             st.metric("Features", len(feature_names))
         with col3:
@@ -728,14 +728,16 @@ def main():
 
         # Show data preview
         st.subheader("Data Preview (First 10 Rows)")
-        st.dataframe(data.head(10), use_container_width=True)
+        preview_df = X.copy()
+        preview_df['target'] = y.values
+        st.dataframe(preview_df.head(10), use_container_width=True)
 
         # Target distribution
         st.subheader("Target Distribution")
         col1, col2 = st.columns([1, 1])
         with col1:
             fig, ax = plt.subplots(figsize=(6, 4))
-            target_counts = data['target'].value_counts().sort_index()
+            target_counts = y.value_counts().sort_index()
             bars = ax.bar(['Malignant (0)', 'Benign (1)'], target_counts.values,
                          color=['#d62728', '#2ca02c'], edgecolor='black', linewidth=0.5)
             ax.set_title('Target Class Distribution', fontsize=13, fontweight='bold')
@@ -750,7 +752,7 @@ def main():
 
         with col2:
             st.markdown("**Feature Statistics (first 5 features):**")
-            st.dataframe(data[feature_names[:5]].describe().round(3), use_container_width=True)
+            st.dataframe(X[feature_names[:5]].describe().round(3), use_container_width=True)
 
         # Feature descriptions
         st.subheader("Feature Descriptions")
